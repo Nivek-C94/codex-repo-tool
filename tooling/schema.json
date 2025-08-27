@@ -1,0 +1,68 @@
+{
+  "name": "codex_repo_tool",
+  "description": "Unified tool for Codex to manage and edit GitHub repositories safely.",
+  "functions": [
+    {
+      "name": "list_files",
+      "description": "List files (optionally filtered by pattern)",
+      "parameters": {
+        "path": "string",
+        "pattern": "string?"
+      }
+    },
+    {
+      "name": "read_file",
+      "description": "Read a file with optional line ranges",
+      "parameters": {
+        "path": "string",
+        "lines": "[int,int]?"
+      }
+    },
+    {
+      "name": "search_code",
+      "description": "Regex/substring search across files",
+      "parameters": {
+        "query": "string",
+        "scope": "string?",
+        "root": "string?"
+      }
+    },
+    {
+      "name": "propose_patch",
+      "description": "Store a unified diff; returns patch id",
+      "parameters": {
+        "file": "string",
+        "diff": "string",
+        "description": "string"
+      }
+    },
+    {
+      "name": "apply_patch",
+      "description": "Apply stored diff after lint/tests pass",
+      "parameters": {
+        "patch_id": "string"
+      }
+    },
+    {
+      "name": "run_tests",
+      "description": "Run tests (pytest or npm test)",
+      "parameters": {
+        "scope": "string?"
+      }
+    },
+    {
+      "name": "lint_code",
+      "description": "Run ruff+black or npm lint",
+      "parameters": {}
+    },
+    {
+      "name": "open_pull_request",
+      "description": "Open PR against default branch",
+      "parameters": {
+        "branch": "string",
+        "title": "string",
+        "body": "string"
+      }
+    }
+  ]
+}
