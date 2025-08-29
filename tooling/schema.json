@@ -3,6 +3,59 @@
   "description": "Unified tool for Codex to manage and edit GitHub repositories safely.",
   "functions": [
     {
+      "name": "task.run",
+      "description": "Do a complete unit of work in a repo (discover\u2192plan\u2192edit\u2192validate\u2192commit\u2192PR) with safe defaults.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "goal": {
+            "type": "string"
+          },
+          "hints": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "dry_run": {
+            "type": "boolean",
+            "default": false
+          },
+          "auto_pr": {
+            "type": "boolean",
+            "default": true
+          },
+          "branch": {
+            "type": "string",
+            "default": "codexrt/auto"
+          },
+          "pr_title": {
+            "type": "string",
+            "default": ""
+          },
+          "pr_body": {
+            "type": "string",
+            "default": ""
+          },
+          "max_files": {
+            "type": "integer",
+            "default": 50
+          },
+          "time_budget_sec": {
+            "type": "integer",
+            "default": 600
+          },
+          "strict_checks": {
+            "type": "boolean",
+            "default": true
+          }
+        },
+        "required": [
+          "goal"
+        ]
+      }
+    },
+    {
       "name": "list_files",
       "description": "List files (optionally filtered by pattern)",
       "parameters": {

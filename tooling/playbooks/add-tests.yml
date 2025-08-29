@@ -1,0 +1,6 @@
+name: add-tests
+finder:
+  ripgrep: ["^def ", "^class "]
+edits: [{type: diff}]
+checks: {lint: true, tests: true}
+commit: {message_template: "test: {summary}", title_template: "test: {summary}"}

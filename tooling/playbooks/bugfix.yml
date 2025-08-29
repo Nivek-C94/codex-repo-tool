@@ -1,0 +1,6 @@
+name: bugfix
+finder:
+  ripgrep: ["TODO|FIXME", "assert .* == .*"]
+edits: [{type: diff}]
+checks: {lint: true, tests: true}
+commit: {message_template: "fix: {summary}", title_template: "fix: {summary}"}
