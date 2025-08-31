@@ -12,7 +12,7 @@ from .patch import (
     propose_bundle,
     propose_patch,
 )
-from .qa import lint_code, run_tests, static_analysis
+from .qa import lint_code, run_tests
 from .search import search_code
 from .semantic import (
     build_index,
