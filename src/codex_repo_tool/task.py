@@ -13,7 +13,7 @@ from .github_api import open_pull_request
 from .model_adapter import get_diff
 from .patch import apply_bundle, propose_bundle
 from .playbooks import select_playbook
-from .semantic import build_index, save_repo_map
+
 
 
 @dataclass
