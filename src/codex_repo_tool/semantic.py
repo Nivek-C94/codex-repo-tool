@@ -43,16 +43,6 @@ def _parse_python(path: Path) -> FileIndex:
     return FileIndex(symbols=symbols, imports=list(imports))
 
 
-def dependency_graph(root: str = ".") -> dict[str, list[str]]:
-    """
-    Return a simple dependency adjacency list built by `build_index(root)`.
-    Keys are file paths (as produced by `build_index`), values are the list
-    of imports detected for that file (e.g., ["os", "sys"] for Python).
-    """
-    idx = build_index(root)
-    return idx.get("deps", {})
-
-
 def _parse_js_like(path: Path) -> FileIndex:
     symbols: list[Symbol] = []
     imports: set[str] = set()
@@ -105,3 +95,12 @@ def find_symbol(name: str, index: dict) -> list[dict]:
             if s["name"] == name:
                 out.append({"file": f, **s})
     return out
+
+
+def dependency_graph(root: str = ".") -> dict[str, list[str]]:
+    """
+    Expose the dependency adjacency list from build_index(root).
+    Keys are file paths (strings), values are the list of imports found.
+    """
+    idx = build_index(root)
+    return idx.get("deps", {})

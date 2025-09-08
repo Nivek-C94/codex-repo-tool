@@ -1,32 +1,27 @@
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
+from typing import Iterable, List
 
 
-def _rg_available() -> bool:
-    return subprocess.run(["bash", "-lc", "command -v rg"], capture_output=True).returncode == 0
+def _iter_text_files(root: Path) -> Iterable[Path]:
+    for p in root.rglob("*"):
+        if p.is_file() and p.suffix in {".py", ".txt", ".md", ".rst"}:
+            yield p
 
 
-def search_code(pattern: str, path: str = ".", max_results: int = 200) -> list[dict]:
-    root = Path(path)
-    results: list[dict] = []
-    if _rg_available():
-        cmd = [
-            "rg",
-            "-n",
-            "--json",
-            "--hidden",
-            "--glob",
-            "!.git",
-            "--max-count",
-            str(max_results),
-            pattern,
-            str(root),
-        ]
-        p = subprocess.run(cmd, capture_output=True, text=True)
-        results.append({"stdout": p.stdout, "stderr": p.stderr, "code": p.returncode})
-    else:
-        p = subprocess.run(["grep", "-RIn", pattern, str(root)], capture_output=True, text=True)
-        results.append({"stdout": p.stdout, "stderr": p.stderr, "code": p.returncode})
-    return results
+def search_code(query: str, root: str | Path = ".") -> List[str]:
+    """
+    Naive text search for `query` under `root`. Returns a list of file paths
+    (as strings) that contain the query at least once.
+    """
+    base = Path(root)
+    hits: list[str] = []
+    for file in _iter_text_files(base):
+        try:
+            text = file.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        if query in text:
+            hits.append(str(file))
+    return hits
