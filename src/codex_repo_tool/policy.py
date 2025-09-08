@@ -12,6 +12,17 @@ class Policy:
     # which checks to require after applying a bundle
     require_checks: Dict[str, bool] = field(default_factory=lambda: {"lint": True, "tests": True})
 
+    def is_path_protected(self, path: str | Path) -> bool:
+        """
+        Default policy: protect .git hooks (e.g., .git/hooks/pre-commit) by default.
+        Keeps other paths unprotected.
+        """
+        s = str(path).replace("\\", "/")
+        # Normalize to avoid false negatives with relative/absolute variants
+        if ".git/hooks/" in s or s.endswith(".git/hooks/pre-commit"):
+            return True
+        return False
+
 
 def load_policy(path: str | None = None) -> Policy:
     """
@@ -34,7 +45,6 @@ def load_policy(path: str | None = None) -> Policy:
         if c.exists() and c.is_file():
             data = yaml.safe_load(c.read_text(encoding="utf-8")) or {}
             req = data.get("require_checks", {})
-            # normalize booleans with defaults
             lint = bool(req.get("lint", True))
             tests = bool(req.get("tests", True))
             return Policy(require_checks={"lint": lint, "tests": tests})

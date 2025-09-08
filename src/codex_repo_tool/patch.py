@@ -19,9 +19,10 @@ class Patch:
     description: str = ""
 
 
-def _ensure_tmpdir() -> Path:
-    SETTINGS.tmp_dir.mkdir(parents=True, exist_ok=True)
-    return SETTINGS.tmp_dir
+def _tmpdir() -> Path:
+    p = Path(SETTINGS.tmp_dir)
+    p.mkdir(parents=True, exist_ok=True)
+    return p
 
 
 def propose_patch(file: str, diff: str, description: str = "") -> str:
@@ -29,9 +30,9 @@ def propose_patch(file: str, diff: str, description: str = "") -> str:
     Create a uniquely-named patch JSON under tmp_dir and return its ID (string)
     like 'patch_<id>'. Tests expect the returned value to start with 'patch_'.
     """
-    _ensure_tmpdir()
+    tmp = _tmpdir()
     patch_id = f"patch_{uuid.uuid4().hex[:8]}"
-    path = SETTINGS.tmp_dir / f"{patch_id}.json"
+    path = tmp / f"{patch_id}.json"
     data = {"file": file, "diff": diff, "description": description}
     path.write_text(json.dumps(data), encoding="utf-8")
     return patch_id
@@ -39,14 +40,13 @@ def propose_patch(file: str, diff: str, description: str = "") -> str:
 
 def apply_patch(patch_id: str, branch: str = "HEAD") -> dict:
     """
-    Read the patch JSON by ID and attempt to apply it (dry-run only here to
-    validate in this simplified implementation).
+    Read the patch JSON by ID and attempt to apply it (dry-run validate).
     """
-    _ensure_tmpdir()
-    path = SETTINGS.tmp_dir / f"{patch_id}.json"
+    tmp = _tmpdir()
+    path = tmp / f"{patch_id}.json"
     info = json.loads(path.read_text(encoding="utf-8"))
 
-    diff_path = SETTINGS.tmp_dir / "apply.patch"
+    diff_path = tmp / "apply.patch"
     diff_path.write_text(info["diff"], encoding="utf-8")
 
     # Dry-run apply to validate
@@ -65,28 +65,27 @@ def apply_patch(patch_id: str, branch: str = "HEAD") -> dict:
     return {"applied": True, "stage": "done"}
 
 
-def discard_patch(patch_id: str) -> dict:
+def discard_patch(patch_id: str) -> bool:
     """
-    Back-compat helper: remove the patch file created by `propose_patch`.
-    Safe to call multiple times.
+    Remove the patch file created by `propose_patch`.
+    Tests expect True on success.
     """
-    _ensure_tmpdir()
-    p = SETTINGS.tmp_dir / f"{patch_id}.json"
-    if not p.exists():
-        return {"discarded": False, "stage": "cleanup", "error": "not found", "patch_id": patch_id}
-    try:
-        p.unlink()
-        return {"discarded": True, "stage": "done", "patch_id": patch_id}
-    except Exception as e:  # pragma: no cover (defensive)
-        return {"discarded": False, "stage": "cleanup", "error": str(e), "patch_id": patch_id}
+    path = _tmpdir() / f"{patch_id}.json"
+    if path.exists():
+        try:
+            path.unlink()
+            return True
+        except Exception:
+            return False
+    return False
 
 
 def propose_bundle(items: list[dict]) -> str:
     """
     Store a bundle file under tmp_dir and return its full path (str).
     """
-    _ensure_tmpdir()
-    bid = SETTINGS.tmp_dir / "bundle.json"
+    tmp = _tmpdir()
+    bid = tmp / "bundle.json"
     bid.parent.mkdir(parents=True, exist_ok=True)
     bid.write_text(json.dumps({"items": items}), encoding="utf-8")
     return str(bid)
