@@ -27,8 +27,6 @@ def search_code(pattern: str, path: str = ".", max_results: int = 200) -> list[d
         p = subprocess.run(cmd, capture_output=True, text=True)
         results.append({"stdout": p.stdout, "stderr": p.stderr, "code": p.returncode})
     else:
-        p = subprocess.run(
-            ["grep", "-RIn", pattern, str(root)], capture_output=True, text=True
-        )
+        p = subprocess.run(["grep", "-RIn", pattern, str(root)], capture_output=True, text=True)
         results.append({"stdout": p.stdout, "stderr": p.stderr, "code": p.returncode})
     return results

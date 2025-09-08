@@ -1,6 +1,7 @@
 from unittest import mock
+
 from codex_repo_tool.github_api import open_pull_request
-import os
+
 
 @mock.patch("codex_repo_tool.github_api.requests.post")
 def test_open_pr(mock_post, monkeypatch):

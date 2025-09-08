@@ -15,7 +15,6 @@ from .patch import apply_bundle, propose_bundle
 from .playbooks import select_playbook
 
 
-
 @dataclass
 class TaskParams:
     goal: str
@@ -154,9 +153,7 @@ def run(
     with tempfile.NamedTemporaryFile(delete=False, suffix=".patch") as tmp:
         tmp.write(diff.encode())
         tmp.flush()
-        apply2 = subprocess.run(
-            ["git", "apply", str(tmp)], capture_output=True, text=True
-        )
+        apply2 = subprocess.run(["git", "apply", str(tmp)], capture_output=True, text=True)
         if apply2.returncode != 0:
             return {
                 "ok": False,
@@ -166,9 +163,7 @@ def run(
             }
 
     commit_msg = params.pr_title or f"chore: {params.goal}"
-    commit = subprocess.run(
-        ["git", "commit", "-am", commit_msg], capture_output=True, text=True
-    )
+    commit = subprocess.run(["git", "commit", "-am", commit_msg], capture_output=True, text=True)
     if commit.returncode != 0:
         return {
             "ok": False,
@@ -192,9 +187,7 @@ def run(
 
     pr_info = None
     if params.auto_pr:
-        pr_info = open_pull_request(
-            params.branch, params.pr_title, params.pr_body or params.goal
-        )
+        pr_info = open_pull_request(params.branch, params.pr_title, params.pr_body or params.goal)
 
     elapsed = time.time() - start
     return {

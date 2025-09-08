@@ -1,5 +1,5 @@
-
 from __future__ import annotations
+
 
 def select_playbook(goal: str) -> str:
     g = goal.lower()

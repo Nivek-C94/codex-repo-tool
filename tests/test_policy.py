@@ -1,5 +1,7 @@
-from codex_repo_tool.policy import load_policy, Policy
 from pathlib import Path
+
+from codex_repo_tool.policy import Policy, load_policy
+
 
 def test_policy_defaults(tmp_path: Path):
     p = load_policy(str(tmp_path))

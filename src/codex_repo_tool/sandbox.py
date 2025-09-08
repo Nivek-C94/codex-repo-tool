@@ -30,7 +30,9 @@ def with_worktree(branch: str, apply_callable):
     tmpdir = Path(tempfile.mkdtemp(prefix="codexrt-wt-"))
     worktree_path = tmpdir / "wt"
     try:
-        add = _run(["git", "worktree", "add", "--detach", str(worktree_path), branch], cwd=str(root))
+        add = _run(
+            ["git", "worktree", "add", "--detach", str(worktree_path), branch], cwd=str(root)
+        )
         if not add.ok:
             return False, {"stage": "worktree-add", "stdout": add.stdout, "stderr": add.stderr}
         ok, res = True, apply_callable(str(worktree_path))

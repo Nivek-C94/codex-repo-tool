@@ -5,9 +5,7 @@ import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-PY_IMPORT_RE = re.compile(
-    r"^\s*(?:from\s+([\w\.]+)\s+import\s+[\w\*]+|import\s+([\w\.]+))"
-)
+PY_IMPORT_RE = re.compile(r"^\s*(?:from\s+([\w\.]+)\s+import\s+[\w\*]+|import\s+([\w\.]+))")
 
 
 @dataclass

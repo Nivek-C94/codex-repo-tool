@@ -39,10 +39,17 @@ def lint_code(scope: str | None = None) -> dict:
             return _run_in_docker(
                 ["npm", "run", "lint"] if scope is None else ["npm", "run", "lint", "--", scope]
             )
-        return _run(["npm", "run", "lint"] if scope is None else ["npm", "run", "lint", "--", scope])
+        return _run(
+            ["npm", "run", "lint"] if scope is None else ["npm", "run", "lint", "--", scope]
+        )
     return {"ok": True, "stdout": "No linter detected; skipping.", "stderr": "", "code": 0}
 
 
 def static_analysis(mode: str = "fast") -> dict:
     """Placeholder for security/style analyzers; returns success by default."""
-    return {"ok": True, "stdout": f"Static analysis ({mode}) skipped in MVP.", "stderr": "", "code": 0}
+    return {
+        "ok": True,
+        "stdout": f"Static analysis ({mode}) skipped in MVP.",
+        "stderr": "",
+        "code": 0,
+    }

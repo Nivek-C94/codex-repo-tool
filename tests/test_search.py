@@ -1,5 +1,7 @@
-from codex_repo_tool.search import search_code
 from pathlib import Path
+
+from codex_repo_tool.search import search_code
+
 
 def test_search(tmp_path: Path):
     f = tmp_path / "a.py"

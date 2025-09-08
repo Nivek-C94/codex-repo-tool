@@ -46,6 +46,21 @@ def apply_patch(patch_id: str, branch: str = "HEAD") -> dict:
     return {"applied": True, "stage": "done"}
 
 
+def discard_patch(patch_id: str) -> dict:
+    """
+    Back-compat helper: remove the patch file created by `propose_patch`.
+    Safe to call multiple times.
+    """
+    p = Path(patch_id)
+    if not p.exists():
+        return {"discarded": False, "stage": "cleanup", "error": "not found", "patch_id": str(p)}
+    try:
+        p.unlink()
+        return {"discarded": True, "stage": "done", "patch_id": str(p)}
+    except Exception as e:  # pragma: no cover (defensive)
+        return {"discarded": False, "stage": "cleanup", "error": str(e), "patch_id": str(p)}
+
+
 def propose_bundle(items: list[dict]) -> str:
     bid = SETTINGS.tmp_dir / "bundle.json"
     bid.write_text(json.dumps({"items": items}), encoding="utf-8")
@@ -57,8 +72,8 @@ def apply_bundle(bundle_id: str, branch: str = "HEAD") -> dict:
     policy = load_policy()
 
     def _apply_in_wt(wt: str) -> dict:
-        from pathlib import Path
         import subprocess
+        from pathlib import Path
 
         wt_path = Path(wt)
         for i, item in enumerate(bundle.get("items", []), start=1):
