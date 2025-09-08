@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -18,18 +19,36 @@ class Patch:
     description: str = ""
 
 
-def propose_patch(file: str, diff: str, description: str = "") -> dict:
+def _ensure_tmpdir() -> Path:
+    SETTINGS.tmp_dir.mkdir(parents=True, exist_ok=True)
+    return SETTINGS.tmp_dir
+
+
+def propose_patch(file: str, diff: str, description: str = "") -> str:
+    """
+    Create a uniquely-named patch JSON under tmp_dir and return its ID (string)
+    like 'patch_<id>'. Tests expect the returned value to start with 'patch_'.
+    """
+    _ensure_tmpdir()
+    patch_id = f"patch_{uuid.uuid4().hex[:8]}"
+    path = SETTINGS.tmp_dir / f"{patch_id}.json"
     data = {"file": file, "diff": diff, "description": description}
-    pid = SETTINGS.tmp_dir / "patch.json"
-    pid.parent.mkdir(parents=True, exist_ok=True)
-    pid.write_text(json.dumps(data), encoding="utf-8")
-    return {"patch_id": str(pid)}
+    path.write_text(json.dumps(data), encoding="utf-8")
+    return patch_id
 
 
 def apply_patch(patch_id: str, branch: str = "HEAD") -> dict:
-    info = json.loads(Path(patch_id).read_text(encoding="utf-8"))
+    """
+    Read the patch JSON by ID and attempt to apply it (dry-run only here to
+    validate in this simplified implementation).
+    """
+    _ensure_tmpdir()
+    path = SETTINGS.tmp_dir / f"{patch_id}.json"
+    info = json.loads(path.read_text(encoding="utf-8"))
+
     diff_path = SETTINGS.tmp_dir / "apply.patch"
     diff_path.write_text(info["diff"], encoding="utf-8")
+
     # Dry-run apply to validate
     dry = subprocess.run(
         ["git", "apply", "--check", str(diff_path)],
@@ -51,18 +70,24 @@ def discard_patch(patch_id: str) -> dict:
     Back-compat helper: remove the patch file created by `propose_patch`.
     Safe to call multiple times.
     """
-    p = Path(patch_id)
+    _ensure_tmpdir()
+    p = SETTINGS.tmp_dir / f"{patch_id}.json"
     if not p.exists():
-        return {"discarded": False, "stage": "cleanup", "error": "not found", "patch_id": str(p)}
+        return {"discarded": False, "stage": "cleanup", "error": "not found", "patch_id": patch_id}
     try:
         p.unlink()
-        return {"discarded": True, "stage": "done", "patch_id": str(p)}
+        return {"discarded": True, "stage": "done", "patch_id": patch_id}
     except Exception as e:  # pragma: no cover (defensive)
-        return {"discarded": False, "stage": "cleanup", "error": str(e), "patch_id": str(p)}
+        return {"discarded": False, "stage": "cleanup", "error": str(e), "patch_id": patch_id}
 
 
 def propose_bundle(items: list[dict]) -> str:
+    """
+    Store a bundle file under tmp_dir and return its full path (str).
+    """
+    _ensure_tmpdir()
     bid = SETTINGS.tmp_dir / "bundle.json"
+    bid.parent.mkdir(parents=True, exist_ok=True)
     bid.write_text(json.dumps({"items": items}), encoding="utf-8")
     return str(bid)
 
@@ -72,7 +97,6 @@ def apply_bundle(bundle_id: str, branch: str = "HEAD") -> dict:
     policy = load_policy()
 
     def _apply_in_wt(wt: str) -> dict:
-        import subprocess
         from pathlib import Path
 
         wt_path = Path(wt)
@@ -126,7 +150,12 @@ def apply_bundle(bundle_id: str, branch: str = "HEAD") -> dict:
                 "tests_ok": tests_ok,
             }
 
-        return {"applied": True, "stage": "done", "lint_ok": lint_ok, "tests_ok": tests_ok}
+        return {
+            "applied": True,
+            "stage": "done",
+            "lint_ok": lint_ok,
+            "tests_ok": tests_ok,
+        }
 
     ok, res = with_worktree(branch, _apply_in_wt)
     if not ok:

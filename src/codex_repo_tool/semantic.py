@@ -97,10 +97,11 @@ def find_symbol(name: str, index: dict) -> list[dict]:
     return out
 
 
-def dependency_graph(root: str = ".") -> dict[str, list[str]]:
+def dependency_graph(root_or_index: str | Path | dict = ".") -> dict[str, list[str]]:
     """
-    Expose the dependency adjacency list from build_index(root).
-    Keys are file paths (strings), values are the list of imports found.
+    Accept either a root path (str/Path) OR a precomputed index dict as returned by build_index().
     """
-    idx = build_index(root)
+    if isinstance(root_or_index, dict):
+        return root_or_index.get("deps", {})
+    idx = build_index(str(root_or_index))
     return idx.get("deps", {})

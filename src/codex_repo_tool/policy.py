@@ -2,34 +2,40 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Dict
 
 import yaml
-
-DEFAULT_POLICY = {
-    "protected_paths": ["package-lock.json", "pnpm-lock.yaml", "yarn.lock"],
-    "require_checks": {"lint": True, "tests": True},
-}
 
 
 @dataclass
 class Policy:
-    protected_paths: list[str] = field(
-        default_factory=lambda: DEFAULT_POLICY["protected_paths"].copy()
-    )
-    require_checks: dict[str, bool] = field(
-        default_factory=lambda: DEFAULT_POLICY["require_checks"].copy()
-    )
-
-    def is_path_protected(self, path: str) -> bool:
-        p = Path(path).name
-        return p in self.protected_paths
+    # which checks to require after applying a bundle
+    require_checks: Dict[str, bool] = field(default_factory=lambda: {"lint": True, "tests": True})
 
 
 def load_policy(path: str | None = None) -> Policy:
-    if path and Path(path).exists():
-        data = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
-        return Policy(
-            protected_paths=data.get("protected_paths", DEFAULT_POLICY["protected_paths"]),
-            require_checks=data.get("require_checks", DEFAULT_POLICY["require_checks"]),
-        )
+    """
+    Load policy from a YAML file if present; otherwise return defaults.
+    - If `path` is a directory, look for 'policy.yaml' or '.codexrt/policy.yaml' inside it.
+    - If `path` is a file, read that file.
+    - If nothing found, return default Policy().
+    """
+    candidates: list[Path] = []
+    if path:
+        p = Path(path)
+        if p.is_dir():
+            candidates = [p / "policy.yaml", p / ".codexrt" / "policy.yaml"]
+        else:
+            candidates = [p]
+    else:
+        candidates = [Path(".") / "policy.yaml", Path(".") / ".codexrt" / "policy.yaml"]
+
+    for c in candidates:
+        if c.exists() and c.is_file():
+            data = yaml.safe_load(c.read_text(encoding="utf-8")) or {}
+            req = data.get("require_checks", {})
+            # normalize booleans with defaults
+            lint = bool(req.get("lint", True))
+            tests = bool(req.get("tests", True))
+            return Policy(require_checks={"lint": lint, "tests": tests})
     return Policy()

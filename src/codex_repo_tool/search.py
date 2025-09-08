@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Iterable, List
+from typing import Iterable, List, Dict
 
 
 def _iter_text_files(root: Path) -> Iterable[Path]:
@@ -10,18 +10,19 @@ def _iter_text_files(root: Path) -> Iterable[Path]:
             yield p
 
 
-def search_code(query: str, root: str | Path = ".") -> List[str]:
+def search_code(query: str, root: str | Path = ".") -> List[Dict[str, object]]:
     """
-    Naive text search for `query` under `root`. Returns a list of file paths
-    (as strings) that contain the query at least once.
+    Naive text search for `query` under `root`.
+    Returns a list of hits: {'path': <file>, 'line': <1-based>, 'text': <line>}.
     """
     base = Path(root)
-    hits: list[str] = []
+    hits: List[Dict[str, object]] = []
     for file in _iter_text_files(base):
         try:
             text = file.read_text(encoding="utf-8", errors="ignore")
         except OSError:
             continue
-        if query in text:
-            hits.append(str(file))
+        for i, line in enumerate(text.splitlines(), 1):
+            if query in line:
+                hits.append({"path": str(file), "line": i, "text": line})
     return hits
