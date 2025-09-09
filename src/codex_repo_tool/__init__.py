@@ -5,6 +5,7 @@ from .github_api import comment_pr, link_to_issue, list_issues, open_pull_reques
 from .patch import apply_patch, discard_patch, propose_patch
 from .qa import lint_code, run_tests
 from .search import search_code
+from .task import run as run_task
 
 __all__ = [
     "list_files",
@@ -19,4 +20,5 @@ __all__ = [
     "comment_pr",
     "list_issues",
     "link_to_issue",
+    "run_task",
 ]

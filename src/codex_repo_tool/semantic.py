@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import json
 import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -105,3 +106,11 @@ def dependency_graph(root_or_index: str | Path | dict = ".") -> dict[str, list[s
         return root_or_index.get("deps", {})
     idx = build_index(str(root_or_index))
     return idx.get("deps", {})
+
+
+def save_repo_map(index: dict, root: str = ".") -> str:
+    """Save index to .codexrt/map.json under the given root and return the path."""
+    path = Path(root) / ".codexrt" / "map.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(index), encoding="utf-8")
+    return str(path)
