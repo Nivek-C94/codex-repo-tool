@@ -2,6 +2,22 @@
 
 Unified, safe, high-level repo operations for AI agents (e.g., Codex).
 
+## Quickstart
+Run a full repo task with minimal options:
+
+```bash
+codexrt run "Refactor helpers into utils/ and add tests"
+```
+
+Add `--auto-pr` to open a pull request after a successful run.
+
+Python API:
+
+```python
+from codex_repo_tool import run_task
+run_task("Refactor helpers into utils/ and add tests")
+```
+
 ## Goals
 - High-level, atomic operations (search, patch, test, PR)
 - Guardrails before applying changes (lint, tests)

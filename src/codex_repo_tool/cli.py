@@ -86,6 +86,12 @@ def main() -> None:
     p_sum = sub.add_parser("summarize", help="Write repo summary map to disk")
     p_sum.add_argument("--root", default=".")
 
+    # simplified task runner
+    p_run = sub.add_parser("run", help="Run a task with minimal options")
+    p_run.add_argument("goal", help="Natural language task objective")
+    p_run.add_argument("--auto-pr", action="store_true", default=False)
+    p_run.add_argument("--model", default=None)
+
     # task orchestrator
     p_task = sub.add_parser("task", help="Plan → validate → (optional) PR")
     p_task.add_argument("--goal", required=True)
@@ -145,6 +151,9 @@ def main() -> None:
         idx = build_index(args.root)
         path = save_repo_map(idx, args.root)
         print(path)
+    elif args.cmd == "run":
+        res = run_task(goal=args.goal, auto_pr=args.auto_pr, model=args.model)
+        print(json.dumps(res, indent=2))
     elif args.cmd == "task":
         res = run_task(
             goal=args.goal,
