@@ -5,6 +5,7 @@ import subprocess
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from .config import SETTINGS
 from .policy import load_policy
@@ -130,30 +131,32 @@ def apply_bundle(bundle_id: str, branch: str = "HEAD") -> dict:
                     "stderr": apply.stderr,
                 }
 
-        lint_ok = True
-        tests_ok = True
-        if policy.require_checks.get("lint", True):
-            lint = lint_code()
-            lint_ok = lint.get("ok", False)
-        if policy.require_checks.get("tests", True):
-            tests = run_tests()
-            tests_ok = tests.get("ok", False)
+        lint_required = policy.require_checks.get("lint", True)
+        tests_required = policy.require_checks.get("tests", True)
 
-        if (policy.require_checks.get("lint", True) and not lint_ok) or (
-            policy.require_checks.get("tests", True) and not tests_ok
-        ):
+        lint: dict[str, Any] = {"ok": True}
+        tests: dict[str, Any] = {"ok": True}
+        if lint_required:
+            lint = lint_code()
+        if tests_required:
+            tests = run_tests()
+
+        lint_ok = lint.get("ok", False) if lint_required else True
+        tests_ok = tests.get("ok", False) if tests_required else True
+
+        if (lint_required and not lint_ok) or (tests_required and not tests_ok):
             return {
                 "applied": False,
                 "stage": "qa",
-                "lint_ok": lint_ok,
-                "tests_ok": tests_ok,
+                "lint": lint,
+                "tests": tests,
             }
 
         return {
             "applied": True,
             "stage": "done",
-            "lint_ok": lint_ok,
-            "tests_ok": tests_ok,
+            "lint": lint,
+            "tests": tests,
         }
 
     ok, res = with_worktree(branch, _apply_in_wt)
