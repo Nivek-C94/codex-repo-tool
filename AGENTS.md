@@ -2,263 +2,187 @@
 
 ## 0) Purpose
 
-* Do a whole repo task in **one call**: *discover → plan → edit (LLM diff) → validate → commit/push → PR*.
-* Keeps changes safe (policy, sandbox apply, required checks).
+* Provide a single entry point for "plan → diff → sandbox apply → lint/tests" so agents can update a Git repo safely.
+* All Git writes happen inside a temporary worktree; the main checkout is never modified directly.
 
 ---
 
 ## 1) Entry Points
 
-### A) Tool function (preferred by agents)
+### A) Python helper (`codex_repo_tool.task.run`)
 
-**Name:** `task.run`
-**Behavior:** Orchestrates end-to-end pipeline.
-**Args:**
-
-* `goal` *(string, required)* — Natural language task objective.
-* `hints` *(string\[])* — Paths/globs to scope discovery (files/dirs).
-* `dry_run` *(bool, default false)* — Validate in sandbox only; no branch/push/PR.
-* `auto_pr` *(bool, default true)* — Open PR on success.
-* `branch` *(string)* — Branch name; default `codexrt/auto/<slug(goal)>`.
-* `pr_title` *(string)* — Defaults to `chore: <goal>`.
-* `pr_body` *(string)* — Defaults to a standard body with the goal.
-* `max_files` *(int, default 50)* — Discovery limit.
-* `time_budget_sec` *(int, default 600)* — Soft guard.
-* `strict_checks` *(bool, default true)* — Fail if lint/tests fail.
-
-**Return (JSON):**
-
-* On success: `{ ok: true, branch, pr?: {…}, elapsed_sec, diff_items }`
-* On failure: `{ ok: false, stage: "plan|apply|branch|apply-working|stage|commit|push", error? , stdout?, stderr? }`
-
-**Example call (tool JSON):**
-
-```json
-{
-  "tool": "task.run",
-  "arguments": {
-    "goal": "Add unit tests for src/parser.py and fix null handling bug",
-    "hints": ["src/parser.py", "tests/"],
-    "auto_pr": true,
-    "branch": "codexrt/auto/parser-tests"
-  }
-}
+```python
+from codex_repo_tool.task import run
+result = run(
+    goal="Append a line to README",
+    auto_pr=True,               # optional – see note below
+    ask_model_for_diff=my_diff_function,  # optional override
+    model="gpt-4o-mini",       # optional override for model_adapter
+)
 ```
 
-### B) CLI (useful for operators & debugging)
+* **Signature:** `run(goal: str, auto_pr: bool = False, ask_model_for_diff: Callable | None = None, model: str | None = None) -> dict`.
+* When `ask_model_for_diff` is `None`, the tool calls `model_adapter.get_diff(goal, context={}, model=model)`.
+* The return payload always includes `{"ok": bool, "branch": "HEAD", "stage": <str>, ...}`. A successful run sets `ok=True`, `stage="done"`, and includes lint/test results from the sandbox.
+* On failure to generate a diff (empty string), the function returns `{ok: False, stage: "plan", reason: "no-diff"}`.
+* `auto_pr=True` calls `github_api.open_pull_request(title=goal)`. The default GitHub helper currently expects positional `branch`/`body`, so in real use you will want to monkeypatch or wrap it before enabling `auto_pr`.
 
-```bash
-codexrt task \
-  --goal "Refactor helpers into utils/ and add tests" \
-  --auto-pr \
-  --branch codexrt/auto/refactor-utils
+### B) CLI (`codexrt`)
+
 ```
+codexrt run "Append a line to README" [--auto-pr] [--model MODEL_NAME]
+```
+
+* `run` is the happy-path wrapper around `task.run`. Arguments map 1:1 to the Python helper (`goal` positional, optional `--auto-pr`, optional `--model`).
+* `task` is wired to the same helper but currently forwards many unsupported options. Stick to `codexrt run` unless you replace `run_task` with a richer implementation.
+* Other useful subcommands:
+  * `codexrt ls --path src/` – recursively list files.
+  * `codexrt cat README.md --start 1 --end 20` – print slices of a file.
+  * `codexrt search "def run"` – naïve substring search across `.py/.txt/.md/.rst` files.
+  * Patch helpers: `codexrt propose <file> <diff>`, `codexrt apply <patch_id>`, `codexrt discard <patch_id>`.
+  * Bundle helpers: `codexrt bundle '[{"file": "README.md", "diff": "..."}]'` plus `codexrt apply-bundle-commit <bundle_path>` to run the sandbox + QA.
+  * QA shortcuts: `codexrt lint`, `codexrt test`.
+  * Semantic helpers: `codexrt index`, `codexrt symbol <Name>`, `codexrt deps`, `codexrt summarize` (writes `.codexrt/map.json`).
+  * PR helper: `codexrt pr --branch feature --title "My PR" --body "..."` (passes straight through to the GitHub API module).
+
+### C) Lower-level APIs
+
+* `propose_patch(file, diff, description="")` → returns an ID like `patch_ab12cd34` stored under `${CODEX_TMP:-.codexrt}/`.
+* `apply_patch(patch_id, branch="HEAD")` → validates a single diff with `git apply --check`.
+* `propose_bundle(items)` → writes `{"items": [...]}` JSON and returns the file path.
+* `apply_bundle(bundle_id, branch="HEAD")` → opens a detached worktree for `branch`, applies every diff, then runs lint/tests per policy. This is what `task.run` uses under the hood.
 
 ---
 
-## 2) What the Tool Expects From the AI
+## 2) What the Model Must Output
 
-### Unified diff output (from the model)
-
-* **Only** output a **multi-file unified diff** (no prose).
-* Use standard headers:
+* Return **only** a unified diff – no explanations, no extra text.
+* Use standard headers and hunks:
 
   ```
-  --- a/relative/path.ext
-  +++ b/relative/path.ext
-  @@ -old,+new @@ optional hunk header
+  --- a/path.ext
+  +++ b/path.ext
+  @@ -old,+new @@ optional header
   -old line
   +new line
   ```
-* Multiple files = multiple `---/+++` blocks concatenated.
-* Paths **must be relative** to repo root.
-* Create new files with a normal diff; tool will add them.
-* Do not edit `.git`, `.github`, or files disallowed by policy.
+* Combine multiple files by concatenating multiple `---/+++` blocks. Paths must be repo-relative.
+* New files are created naturally by diff headers (`--- /dev/null`, `+++ b/new/file`).
 
-**Minimal diff example:**
+**Minimal example**:
 
 ```
 --- a/README.md
 +++ b/README.md
 @@ -1,3 +1,4 @@
  # CodexRepoTool
-
+ 
  Unified, safe, high-level repo operations for AI agents (e.g., Codex).
 +Added quickstart usage.
 ```
 
-### Context provided to the model
-
-* Tool builds a lightweight repo context (selected file heads/snippets) and **auto-prefixes** your goal with a playbook tag:
-
-  * `[bugfix]`, `[add-tests]`, `[refactor]`, `[upgrade-dep]`, or `[general]`.
+`task.run` pulls file targets from the `+++ b/<path>` lines. If none are present, it assumes `README.md` to keep tests stable.
 
 ---
 
-## 3) How the Pipeline Works (stages)
+## 3) Pipeline Inside `task.run`
 
-1. **Discover**: resolve `hints` into candidate files (cap at `max_files`).
-2. **Index/Map**: `.codexrt/map.json` used to assist selection (maintenance refreshes it).
-3. **Playbook**: goal classified to guide the model.
-4. **LLM Diff**: built-in adapter calls your model to get a unified diff.
-5. **Sandbox Apply**: apply diff safely; reject if malformed or touches protected paths.
-6. **Validate**:
+1. **Playbook tagging** – `select_playbook(goal)` classifies the goal (`bugfix`, `add-tests`, `refactor`, `upgrade-dep`, `general`). The return value is not yet used for branching logic but provides a hook.
+2. **Diff acquisition** – `ask_model_for_diff(goal, context)` if supplied, otherwise `model_adapter.get_diff`. Context is currently an empty dict; you can pre-fill it with `{path: file_snippet}` if you wrap `run`.
+3. **Bundle assembly** – `_targets_from_diff` extracts the `+++ b/...` paths, then each target receives the same diff payload in the bundle. The bundle is stored under `${CODEX_TMP:-.codexrt}/bundle.json`.
+4. **Sandbox apply** – `apply_bundle` calls `git worktree add --detach <tmp>` for `branch="HEAD"`, copies each diff to the worktree, and runs `git apply --check` followed by `git apply`.
+5. **QA phase** – after patching, `lint_code()` and `run_tests()` execute if the policy requires them (defaults: both required). Failures yield `{applied: False, stage: "qa", lint: {...}, tests: {...}}`.
+6. **Result assembly** – the dict from `apply_bundle` is returned with an added `ok` flag (`applied` coerced to bool) and the `branch` name. No commits, pushes, or branch creation occur. The main checkout stays untouched.
+7. **Optional PR** – if `auto_pr` is true, `open_pull_request(title=goal)` is called. Because no branch is created automatically, this helper is only useful when you pre-create a branch and adjust `open_pull_request` to default to it.
 
-   * `lint` + `tests` (inside Docker if `Dockerfile` or `.codexrt/docker.yml` and Docker is present).
-7. **Commit/Push/PR** *(skipped in `dry_run`)*:
-
-   * Create branch → apply diff → commit → push → open PR (if `auto_pr`).
-
-**Failure surfaces (`stage` values):**
-
-* `plan` (no/empty diff), `apply` (bundle apply), `branch`, `apply-working`, `stage` (git add), `commit`, `push`.
-
----
-
-## 4) Environment & Config
-
-### Required/Recommended env
-
-```bash
-# Model for diff generation
-MODEL_PROVIDER=openai|azure_openai|http
-MODEL_NAME=gpt-4o-mini             # example; choose supported model
-API_KEY=...                        # provider key
-MODEL_ENDPOINT=https://...         # required for http/azure custom endpoints
-
-# GitHub for PRs
-GITHUB_TOKEN=ghp_xxx
-GITHUB_REPO=owner/name             # auto-inferred when origin=GitHub
-DEFAULT_BRANCH=main                # auto-inferred; falls back to current
-```
-
-### Optional behavior flags (speed/infra)
-
-```bash
-CODEXRT_SKIP_UPDATE=1              # skip pip update of tool during maintenance
-CODEX_FAST=1                       # maintenance: lint+test only (skip extras)
-CODEX_SUMMARIZE_MAX_AGE_MIN=30     # refresh map.json only if older than this
-CODEX_SKIP_HUSKY=1                 # don’t (re)install Husky during maintenance
-CODEX_INSTALL_CLI=0                # skip brew/apt/etc optional CLI installs
-CODEX_WRITE_BASHRC=0               # don’t edit ~/.bashrc to add venv PATH
-```
-
-### Docker validations (optional)
-
-* If Docker is available and there’s a `Dockerfile` or `.codexrt/docker.yml`, lint/tests run inside a container.
-* `.codexrt/docker.yml` example:
-
-  ```yaml
-  image: node:20
-  lint: ["npm","run","lint"]
-  test: ["npm","run","test"]
-  ```
-
-### Policy
-
-* `.codexrt/policy.yml` defaults:
-
-  * `protected_paths`: blocks `.git/**`, `.github/**`, `secrets/**`
-  * `require_checks`: `lint: true`, `tests: true`
+**Failure stages you may see:**
+* `plan` – diff was empty.
+* `dry-run` – `git apply --check` failed in the sandbox.
+* `apply` – `git apply` failed.
+* `qa` – lint or tests failed; see the embedded `lint` / `tests` dicts.
+* `worktree-add` – `git worktree add` failed (often because you are not in a Git repo).
+* `{error: "Not a git repository"}` – the sandbox could not find a Git root.
 
 ---
 
-## 5) Start & Maintenance Scripts (what they do for the AI)
+## 4) Environment & Configuration
 
-* **`scripts/codex_setup_once.sh` (run once per instance)**
-
-  * pyenv-aware Python detection → create `.codexrt/.venv`
-  * Install `codex-repo-tool` from GitHub
-  * Seed `.codexrt/policy.yml`, `.codexrt/docker.yml`
-  * Build initial `.codexrt/map.json`
-  * Install Node dev tooling + repo helper scripts; set npm scripts; init Husky
-
-* **`scripts/codex_maintenance_before_task.sh` (run every task)**
-
-  * Optionally stash → `git fetch/rebase` (ff-only)
-  * Install JS deps (lockfile-aware)
-  * Ensure eslint/prettier/test scripts exist
-  * Update `codex-repo-tool` (unless `CODEXRT_SKIP_UPDATE=1`)
-  * Refresh `.codexrt/map.json` (time-gated if `CODEX_SUMMARIZE_MAX_AGE_MIN` is set)
-  * Infer `GITHUB_REPO`/`DEFAULT_BRANCH` safely (no empty exports)
-
-*You don’t need to call these manually if your environment is wired to run them automatically before work.*
+* **Temp directory:** `config.SETTINGS.tmp_dir` defaults to `.codexrt/`. Override via `CODEX_TMP=/path`.
+* **Model adapter:**
+  * Set `MODEL_PROVIDER=http` to POST `{goal, context}` to `MODEL_ENDPOINT` (or `MODEL_URL` / `DIFF_ENDPOINT`). Response must be JSON containing `{"diff": "..."}`.
+  * Default provider is `openai`. Configure `OPENAI_API_KEY`, optionally `OPENAI_ENDPOINT` (defaults to `https://api.openai.com/v1/chat/completions`) and `OPENAI_MODEL` (defaults to `gpt-4o-mini`). Responses may be OpenAI-style chat completions or a plain `{"diff": "..."}` payload.
+* **GitHub API:** `github_api.open_pull_request` requires `GITHUB_TOKEN`, `GITHUB_REPO` (e.g., `owner/name`), and optional `DEFAULT_BRANCH` (`main` if unset). Because `task.run` does not create or push a branch, callers typically disable `auto_pr` or swap in a stub for testing.
+* **Docker flag:** `docker_sandbox.docker_available()` just checks `docker version`. `_run_in_docker` currently executes commands directly (no container isolation yet).
 
 ---
 
-## 6) Agent Prompting Patterns (produce diffs reliably)
+## 5) Policy & QA Defaults
 
-* **Bugfix task:**
-
-  > *Goal*: Fix crash in `src/parser.py` when config is `null`. Add a unit test reproducing the issue.
-  > *Output*: Only a multi-file unified diff that (1) updates `src/parser.py` with explicit null checks and (2) adds a test file under `tests/test_parser.py` covering null config. Do not include commentary.
-
-* **Refactor + tests:**
-
-  > *Goal*: Move helpers from `src/helpers/*.js` into `src/utils/` and update imports. Add basic unit tests for the moved functions.
-  > *Output*: Only a unified diff updating all imports and creating tests. Preserve behavior; avoid changing public APIs.
-
-* **Dependency bump (non-breaking):**
-
-  > *Goal*: Bump `lodash` to `^4.17.21`, update lockfile, and fix any lint issues.
-  > *Output*: Only unified diff for `package.json` and any necessary code changes (no prose). Do not bump unrelated deps.
-
-**Key rules to include in your model system prompt:**
-
-* “Return **only** a multi-file unified diff; no explanations.”
-* “Paths must be relative to repo root.”
-* “Don’t modify protected paths.”
-* “Prefer small, testable changes with passing lint/tests.”
+* `policy.load_policy()` looks for `policy.yaml` or `.codexrt/policy.yaml`; if absent it uses `Policy(require_checks={"lint": True, "tests": True})`.
+* The default protection only blocks paths containing `.git/hooks/`. All other paths are allowed.
+* `lint_code()` runs:
+  * `ruff check --fix .` when Python tooling is detected, OR
+  * `npm run lint` (with optional scope) for JS projects.
+  * If neither tool is present, linting succeeds immediately.
+* `run_tests()` runs:
+  * `pytest -q` (optionally with a scope argument) when Python tooling is detected, OR
+  * `npm test` for Node projects.
+  * If no known test runner exists, the function reports success with a "skipping" message.
 
 ---
 
-## 7) Good Practices for the AI
+## 6) Search & Semantic Helpers
 
-* **Scope with `hints`** (paths/globs) to keep diffs focused.
-* **Add tests** for behavior changes; place under existing test framework (jest/vitest/pytest).
-* **Honor project style** (ESM/CJS, tsconfig, lint rules).
-* **Keep atomic**: one task’s changes in one diff (don’t mix refactors and feature work).
-* **Avoid large lockfile churn** unless the goal is dependency work.
+* `search_code(query, root=".")` performs a simple substring scan over `.py`, `.txt`, `.md`, `.rst` files. There is no ripgrep dependency yet.
+* `semantic.build_index(root)` builds a naive symbol/import map for Python and JS/TS files using `ast` or regex heuristics.
+* `semantic.save_repo_map(index, root)` writes the map to `.codexrt/map.json` and returns the file path.
 
 ---
 
-## 8) Troubleshooting (AI can self-diagnose via `stage`)
+## 7) Troubleshooting Cheatsheet
 
-* `stage: "plan"` → Your diff was empty/malformed. Re-emit a proper unified diff.
-* `stage: "apply"` or `"apply-working"` → Patch didn’t apply; likely paths or hunks don’t match. Re-base your diff against HEAD or adjust context lines.
-* `stage: "commit" / "push"` → Branch/remote issues; ensure `GITHUB_REPO` and permissions or set `dry_run`.
-* Lint/test failures → Update the diff to fix code style or broken tests; include necessary changes to tests.
+| Stage / Error            | Likely Cause & Fix |
+|--------------------------|--------------------|
+| `plan`                   | Diff blank or whitespace only. Regenerate with actual edits.
+| `dry-run`                | Patch failed `git apply --check`. Update diff context against HEAD.
+| `apply`                  | Patch failed to apply even after the dry-run check (usually conflicts). Adjust diff.
+| `qa`                     | Lint/tests failed. Inspect `res["lint"]` and `res["tests"]` for stdout/stderr.
+| `worktree-add` / `error` | Not in a Git repo or `git worktree` unsupported. Initialise Git or adjust environment.
 
 ---
 
-## 9) Minimal End-to-End Example
-
-**Call:**
+## 8) Minimal JSON Tool Invocation
 
 ```json
 {
   "tool": "task.run",
   "arguments": {
-    "goal": "Add vitest for src/add.ts and fix add() to handle negatives",
-    "hints": ["src/add.ts", "tests/"],
-    "auto_pr": true
+    "goal": "Append a troubleshooting note to README",
+    "auto_pr": false
   }
 }
 ```
 
-**Model should return a diff that:**
-
-* Edits `src/add.ts` to correctly sum negatives.
-* Adds/updates `tests/add.test.ts` to cover negative inputs.
-* Nothing else.
+Produce a unified diff that updates `README.md`; no additional metadata is needed.
 
 ---
 
-## 10) Safety & Limits
+## 9) Good Practices for Agents
 
-* Protected paths are blocked; diffs touching them will fail.
-* By default, **lint + tests must pass** (`strict_checks: true`).
-* Dockerized checks run only if Docker is available and config is present.
-* Large diffs or unrelated file churn may be rejected by sandbox apply.
+1. **Search before renaming.** Use `codexrt search` or `semantic.find_symbol` to locate all references.
+2. **Respect repo conventions.** Match formatting, module style, and lint expectations (ruff, npm lint, etc.).
+3. **Keep diffs focused.** Edit only what the goal requires to keep the sandbox happy.
+4. **Mind QA defaults.** If lint/tests are required, update them in the same diff so the bundle passes.
+5. **No secrets.** GitHub helpers rely on `GITHUB_TOKEN`; never print or commit sensitive values.
+6. **Communicate optional extras.** If you add opportunistic fixes (docs, comments), mark them optional so humans can back them out.
 
 ---
+
+## 10) Status Menu Template
+
+When summarising work, include:
+
+* **Repository:** `<repo name>`
+* **Main Goal:** `<task objective>`
+* **Suggested Next Task:** `<concise follow-up>`
+
