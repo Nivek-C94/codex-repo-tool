@@ -1,6 +1,6 @@
 # Codex Repo Tool — Tutorial
 
-This guide walks agents and developers through the common workflows supported by **codex-repo-tool**. Use it as a step-by-step tutorial when exploring or automating repository maintenance.
+This short guide mirrors the current CLI/API behaviour. Use it as a walkthrough when experimenting with `codex-repo-tool`.
 
 ## 1. Setup
 
@@ -8,94 +8,70 @@ This guide walks agents and developers through the common workflows supported by
    ```bash
    pip install codex-repo-tool
    ```
-2. Navigate to a Git repository that you want to operate on.
+2. Run commands from inside a Git repository (the sandbox relies on `git worktree`).
 
 ## 2. One-Line Task Execution
 
-For quick tasks that should handle diff planning, validation, commit and PR automatically:
+Run the end-to-end pipeline with the positional goal argument:
 
 ```bash
-codexrt run --goal "Add tests for src/add.py" --auto-pr
+codexrt run "Add tests for src/add.py"
 ```
 
-* `--goal` describes the change in natural language.
-* `--auto-pr` (default) opens a pull request when checks pass.
-* The command will refuse to commit if lint or tests fail.
+* `--auto-pr` is optional. It calls `github_api.open_pull_request(title=goal)`, so you typically patch that helper when testing.
+* `--model` overrides the default model name passed to `model_adapter.get_diff`.
+* The command stops after lint/tests; it does **not** commit or push.
 
-## 3. Full Task Control
+## 3. Full Control via Bundles
 
-When you need more flags or want to run in `dry_run` mode, use the `task` subcommand:
+When you want to assemble patches manually and still rely on the sandbox:
 
 ```bash
-codexrt task \
-  --goal "Refactor helpers into utils/" \
-  --hints "src/helpers" "tests" \
-  --dry-run
+codexrt bundle '[{"file": "README.md", "diff": "--- a/README.md\n+++ b/README.md\n"}]'
+# -> prints the bundle path (e.g., .codexrt/bundle.json)
+
+codexrt apply-bundle-commit .codexrt/bundle.json
+# -> applies inside a detached worktree, runs lint/tests, and reports JSON
 ```
 
-* `--hints` restricts file discovery.
-* `--dry-run` validates in a temporary worktree without committing.
-* Omit `--dry-run` and add `--branch` to create and push changes.
+* `codexrt apply <patch_id>` is available for single-file diffs created with `codexrt propose`.
+* To discard a proposed patch, run `codexrt discard <patch_id>`.
 
-## 4. Searching the Repository
+## 4. Repository Utilities
 
-```bash
-codexrt search "def run_task"
-```
+* `codexrt ls --path src/` – list files (recursive).
+* `codexrt cat README.md --start 1 --end 20` – print a slice of a file.
+* `codexrt search "def run_task"` – naïve substring scan over `.py`, `.txt`, `.md`, `.rst` files (no ripgrep dependency yet).
+* `codexrt lint` / `codexrt test` – run `ruff` or `pytest` / `npm` based on detected project type.
+* `codexrt index` – build a lightweight symbol/import index; combine with `codexrt symbol` or `codexrt deps`.
+* `codexrt summarize` – write `.codexrt/map.json` from the latest index.
 
-This prints each match with the file path and line number, scanning only source-like files.
-
-## 5. Crafting Patches Manually
-
-1. Propose a patch:
-   ```bash
-   codexrt patch propose <<'DIFF'
-   --- a/README.md
-   +++ b/README.md
-   @@ -1,3 +1,4 @@
-    # Codex Repo Tool
-    Unified repository operations for AI agents.
-   +Added quickstart example.
-   DIFF
-   ```
-2. If the patch applies cleanly you will see a success message.
-3. Apply the stored patch into the working tree:
-   ```bash
-   codexrt patch apply
-   ```
-4. Run validation checks (lint and tests):
-   ```bash
-   codexrt qa
-   ```
-
-## 6. Python API
-
-The same capabilities are available programmatically:
+## 5. Python API
 
 ```python
-from codex_repo_tool import run_task, search_code
+from codex_repo_tool import run_task
 
-hits = search_code('def run_task')
-print(hits[0])  # {'path': 'src/codex_repo_tool/task.py', 'line_no': 10, 'line': 'def run_task(...'}
-
-run_task(goal="Update README quickstart", dry_run=True)
+result = run_task(
+    goal="Update README quickstart",
+    auto_pr=False,
+)
+print(result["stage"])  # "done" on success
 ```
 
-`run_task` mirrors the `codexrt run` command, returning a dictionary describing the result.
+* The helper is an alias of `codex_repo_tool.task.run`.
+* The returned dict includes QA results and failure diagnostics (`stage`, `lint`, `tests`).
 
-## 7. Validation Policy
+## 6. Validation Policy
 
-The tool enforces checks defined in `.codexrt/policy.yml`. By default:
+`policy.load_policy()` reads `policy.yaml` or `.codexrt/policy.yaml`. Defaults:
 
-- Lint and tests must pass (`require_checks`).
-- Writes to sensitive paths like `.git/` are blocked (`protected_paths`).
+- Lint and tests are required (`require_checks: {lint: true, tests: true}`).
+- Only `.git/hooks/` paths are protected. Other paths rely on sandbox validation rather than policy enforcement.
 
-Adjust the policy file if your workflow requires different rules.
+## 7. Next Steps
 
-## 8. Next Steps
+- Inspect `README.md` for a high-level project overview.
+- Browse `tests/` to understand expected JSON payloads.
+- Run `python -m codex_repo_tool.cli --help` to see every subcommand.
 
-- Explore `examples/sample.diff` for a minimal unified diff.
-- Review `README.md` for project overview.
-- Run `codexrt --help` to see all available commands.
-
-This AGENTS file only documents usage; it does not enforce additional rules on files under `docs/`.
+This file documents behaviour only; it does not impose extra rules on docs.
