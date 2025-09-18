@@ -50,5 +50,5 @@ codexrt task --goal "Refactor helpers into utils/ and add tests" --auto-pr --bra
 
 ## New in 0.5.0 — Built-in model adapter & Docker checks
 - **Model adapter**: set `MODEL_PROVIDER`, `MODEL_NAME`, `API_KEY`, `MODEL_ENDPOINT` and the tool will call your LLM to obtain a unified diff automatically (no injection needed).
-- **Auto playbook selection**: goals are prefixed with a lightweight playbook tag to guide the model (e.g., `[bugfix]`).
+- **Auto playbook selection**: goals are prefixed with a lightweight playbook tag to guide the model (e.g., `[bugfix]`). Advanced plays cover security patches, documentation work, and performance tuning alongside bugfixes, test additions, refactors, and dependency upgrades.
 - **Containerized validations**: if Docker is available and a `Dockerfile` or `.codexrt/docker.yml` exists, lint/tests run **inside Docker**.
