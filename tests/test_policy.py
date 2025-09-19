@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from pathlib import Path
 
 from codex_repo_tool.policy import Policy, load_policy

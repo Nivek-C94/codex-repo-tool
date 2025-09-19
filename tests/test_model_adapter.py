@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 from unittest import mock
 
 from codex_repo_tool.model_adapter import get_diff
 
 
-@mock.patch("codex_repo_tool.model_adapter.requests.post")
+@mock.patch("codex_repo_tool.http_client.client.request")
 def test_adapter_openai_path(mock_post, monkeypatch):
     monkeypatch.setenv("MODEL_PROVIDER", "openai")
     monkeypatch.setenv("MODEL_NAME", "gpt-4o-mini")
@@ -16,7 +18,7 @@ def test_adapter_openai_path(mock_post, monkeypatch):
     assert out.startswith("--- a/")
 
 
-@mock.patch("codex_repo_tool.model_adapter.requests.post")
+@mock.patch("codex_repo_tool.http_client.client.request")
 def test_adapter_http_path(mock_post, monkeypatch):
     monkeypatch.setenv("MODEL_PROVIDER", "http")
     monkeypatch.setenv("MODEL_ENDPOINT", "https://example.com/diff")
