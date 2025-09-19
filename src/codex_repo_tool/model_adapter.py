@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import os
-from typing import Any, Dict
+from typing import Any
 
-import requests
+from .http_client import client as http_client
 
 
-def _openai_payload(goal: str, context: Dict[str, str], model: str) -> Dict[str, Any]:
-    # Minimal, provider-agnostic "diff-only" instruction
+def _openai_payload(goal: str, context: dict[str, str], model: str) -> dict[str, Any]:
     prompt = (
         "You are a code patch generator.\n"
         "Given a goal and a small context mapping {filename: content}, "
@@ -26,17 +25,19 @@ def _openai_payload(goal: str, context: Dict[str, str], model: str) -> Dict[str,
     }
 
 
-def get_diff(goal: str, context: Dict[str, str], model: str | None = None) -> str:
-    """
-    Providers:
-      - MODEL_PROVIDER=http:
-          POST JSON {'goal','context'} to endpoint env:
-            MODEL_ENDPOINT | MODEL_URL | DIFF_ENDPOINT
-          expect {'diff': '...'} and return it.
-      - MODEL_PROVIDER=openai (default):
-          POST OpenAI-style payload to OPENAI_ENDPOINT (or default).
-          Accept either {'diff': '...'} or OpenAI-style choices[].
-    """
+def _post_json(url: str, payload: Any, headers: dict[str, str] | None = None, timeout: int = 30) -> Any:
+    response = http_client.post(url, json=payload, headers=headers or {}, timeout=timeout)
+    if hasattr(response, "raise_for_status"):
+        response.raise_for_status()
+    if hasattr(response, "json"):
+        try:
+            return response.json()
+        except ValueError:
+            return {}
+    return {}
+
+
+def get_diff(goal: str, context: dict[str, str], model: str | None = None) -> str:
     provider = (os.environ.get("MODEL_PROVIDER") or "openai").lower()
 
     if provider == "http":
@@ -47,29 +48,21 @@ def get_diff(goal: str, context: Dict[str, str], model: str | None = None) -> st
         )
         if not endpoint:
             return ""
-        resp = requests.post(endpoint, json={"goal": goal, "context": context}, timeout=30)
-        # In tests, raise_for_status is mocked to no-op
-        if hasattr(resp, "raise_for_status"):
-            resp.raise_for_status()
-        data = (resp.json() or {}) if hasattr(resp, "json") else {}
-        diff = data.get("diff", "")
-        return diff or ""
+        data = _post_json(endpoint, {"goal": goal, "context": context}, timeout=30)
+        if isinstance(data, dict):
+            diff = data.get("diff", "")
+            return diff or ""
+        return ""
 
-    # default: openai-style
     endpoint = os.environ.get("OPENAI_ENDPOINT", "https://api.openai.com/v1/chat/completions")
     model = model or os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
-    headers: Dict[str, str] = {}
+    headers: dict[str, str] = {}
     if os.environ.get("OPENAI_API_KEY"):
         headers["Authorization"] = f"Bearer {os.environ['OPENAI_API_KEY']}"
     payload = _openai_payload(goal, context, model)
 
-    resp = requests.post(endpoint, json=payload, headers=headers, timeout=60)
-    if hasattr(resp, "raise_for_status"):
-        resp.raise_for_status()
-    data = (resp.json() or {}) if hasattr(resp, "json") else {}
-
-    # Allow tests to just return {"diff": "..."} even on "openai" path
-    if "diff" in data:
+    data = _post_json(endpoint, payload, headers=headers, timeout=60)
+    if isinstance(data, dict) and "diff" in data:
         return data.get("diff") or ""
 
     try:

@@ -1,33 +1,29 @@
 from __future__ import annotations
 
+import fnmatch
 from pathlib import Path
-from typing import List, Dict, Tuple, Optional
 
 
-def list_files(root: str | Path) -> List[Dict[str, str]]:
-    """
-    Return a list of {'path': <path>} for files under root.
-    """
+def list_files(root: str | Path, pattern: str | None = None) -> list[dict[str, str]]:
     base = Path(root)
-    out: List[Dict[str, str]] = []
+    out: list[dict[str, str]] = []
     for p in base.rglob("*"):
-        if p.is_file():
-            out.append({"path": str(p)})
+        if not p.is_file():
+            continue
+        rel = p.relative_to(base)
+        if pattern and not fnmatch.fnmatch(str(rel), pattern):
+            continue
+        out.append({"path": str(p)})
     return out
 
 
-def read_file(path: str | Path, line_range: Optional[Tuple[int, int]] = None) -> str:
-    """
-    Read full file text. If line_range=(start,end) is provided (1-based, inclusive),
-    return only those lines joined by '\n' with no trailing newline.
-    """
+def read_file(path: str | Path, line_range: tuple[int, int] | None = None) -> str:
     p = Path(path)
     text = p.read_text(encoding="utf-8", errors="ignore")
     if not line_range:
         return text
     start, end = line_range
     lines = text.splitlines()
-    # Clamp and slice inclusively
     start = max(1, start)
     end = max(start, end)
     sel = lines[start - 1 : end]

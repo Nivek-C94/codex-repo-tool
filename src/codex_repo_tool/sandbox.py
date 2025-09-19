@@ -5,6 +5,7 @@ import subprocess
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable, Tuple
 
 
 @dataclass
@@ -19,7 +20,7 @@ def _run(cmd: list[str], cwd: str | None = None) -> CmdResult:
     return CmdResult(p.returncode == 0, p.stdout, p.stderr)
 
 
-def with_worktree(branch: str, apply_callable):
+def with_worktree(branch: str, apply_callable: Callable[[str], dict[str, object]]) -> Tuple[bool, dict[str, object]]:
     git_root = subprocess.run(
         ["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True
     )
@@ -30,13 +31,11 @@ def with_worktree(branch: str, apply_callable):
     tmpdir = Path(tempfile.mkdtemp(prefix="codexrt-wt-"))
     worktree_path = tmpdir / "wt"
     try:
-        add = _run(
-            ["git", "worktree", "add", "--detach", str(worktree_path), branch], cwd=str(root)
-        )
+        add = _run(["git", "worktree", "add", "--detach", str(worktree_path), branch], cwd=str(root))
         if not add.ok:
             return False, {"stage": "worktree-add", "stdout": add.stdout, "stderr": add.stderr}
-        ok, res = True, apply_callable(str(worktree_path))
-        return ok, res
+        result = apply_callable(str(worktree_path))
+        return True, result
     finally:
         try:
             _run(["git", "worktree", "remove", "--force", str(worktree_path)], cwd=str(root))

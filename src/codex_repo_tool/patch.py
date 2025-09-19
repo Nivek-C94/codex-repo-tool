@@ -27,10 +27,6 @@ def _tmpdir() -> Path:
 
 
 def propose_patch(file: str, diff: str, description: str = "") -> str:
-    """
-    Create a uniquely-named patch JSON under tmp_dir and return its ID (string)
-    like 'patch_<id>'. Tests expect the returned value to start with 'patch_'.
-    """
     tmp = _tmpdir()
     patch_id = f"patch_{uuid.uuid4().hex[:8]}"
     path = tmp / f"{patch_id}.json"
@@ -39,10 +35,7 @@ def propose_patch(file: str, diff: str, description: str = "") -> str:
     return patch_id
 
 
-def apply_patch(patch_id: str, branch: str = "HEAD") -> dict:
-    """
-    Read the patch JSON by ID and attempt to apply it (dry-run validate).
-    """
+def apply_patch(patch_id: str, branch: str = "HEAD") -> dict[str, Any]:
     tmp = _tmpdir()
     path = tmp / f"{patch_id}.json"
     info = json.loads(path.read_text(encoding="utf-8"))
@@ -50,7 +43,6 @@ def apply_patch(patch_id: str, branch: str = "HEAD") -> dict:
     diff_path = tmp / "apply.patch"
     diff_path.write_text(info["diff"], encoding="utf-8")
 
-    # Dry-run apply to validate
     dry = subprocess.run(
         ["git", "apply", "--check", str(diff_path)],
         capture_output=True,
@@ -67,10 +59,6 @@ def apply_patch(patch_id: str, branch: str = "HEAD") -> dict:
 
 
 def discard_patch(patch_id: str) -> bool:
-    """
-    Remove the patch file created by `propose_patch`.
-    Tests expect True on success.
-    """
     path = _tmpdir() / f"{patch_id}.json"
     if path.exists():
         try:
@@ -81,10 +69,7 @@ def discard_patch(patch_id: str) -> bool:
     return False
 
 
-def propose_bundle(items: list[dict]) -> str:
-    """
-    Store a bundle file under tmp_dir and return its full path (str).
-    """
+def propose_bundle(items: list[dict[str, Any]]) -> str:
     tmp = _tmpdir()
     bid = tmp / "bundle.json"
     bid.parent.mkdir(parents=True, exist_ok=True)
@@ -92,13 +77,19 @@ def propose_bundle(items: list[dict]) -> str:
     return str(bid)
 
 
-def apply_bundle(bundle_id: str, branch: str = "HEAD") -> dict:
+def apply_bundle(bundle_id: str, branch: str = "HEAD") -> dict[str, Any]:
     bundle = json.loads(Path(bundle_id).read_text(encoding="utf-8"))
     policy = load_policy()
 
-    def _apply_in_wt(wt: str) -> dict:
-        from pathlib import Path
+    for item in bundle.get("items", []):
+        if policy.is_path_protected(item.get("file", "")):
+            return {
+                "applied": False,
+                "stage": "policy",
+                "error": f"Protected path: {item.get('file', '')}",
+            }
 
+    def _apply_in_wt(wt: str) -> dict[str, Any]:
         wt_path = Path(wt)
         for i, item in enumerate(bundle.get("items", []), start=1):
             diff_file = wt_path / f"diff_{i}.patch"

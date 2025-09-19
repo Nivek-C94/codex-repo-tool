@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from pathlib import Path
 
 from codex_repo_tool.fs_utils import list_files, read_file
@@ -10,5 +12,7 @@ def test_list_and_read(tmp_path: Path):
     f.write_text("hello\nworld\n", encoding="utf-8")
     files = list_files(str(tmp_path))
     assert any("x.txt" in x["path"] for x in files)
+    filtered = list_files(str(tmp_path), pattern="*.txt")
+    assert all(item["path"].endswith(".txt") for item in filtered)
     assert read_file(str(f)) == "hello\nworld\n"
     assert read_file(str(f), (2, 2)) == "world"

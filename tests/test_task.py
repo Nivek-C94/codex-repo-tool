@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import subprocess
 from unittest import mock
 
@@ -22,7 +24,6 @@ def test_task_happy(mock_run, mock_pr, tmp_path, monkeypatch):
             self.stdout = ""
             self.stderr = ""
 
-    # checkout, apply, add, commit, push
     mock_run.return_value = R(0)
     mock_pr.return_value = {"number": 1}
 
@@ -41,6 +42,7 @@ def test_task_happy(mock_run, mock_pr, tmp_path, monkeypatch):
     res = run(goal="Append line to README", auto_pr=True, ask_model_for_diff=ask)
     assert res["ok"] is True
     assert "branch" in res
+    assert res["playbook"] == "docs"
 
 
 @mock.patch("subprocess.run")
